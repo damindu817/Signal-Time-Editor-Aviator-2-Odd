@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Signal Time Editor (GitHub Sync)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background-color: #111;
+      color: #eee;
+      max-width: 600px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: #00ffff;
+      margin-bottom: 20px;
+    }
+
+    label {
+      margin-top: 12px;
+      display: block;
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      border-radius: 6px;
+      border: none;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+
+    button {
+      background-color: #00ffff;
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    table {
+      width: 100%;
+      background-color: #222;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #333;
+    }
+
+    td input {
+      width: 100%;
+    }
+
+    .delete-btn {
+      background-color: crimson;
+      color: white;
+    }
+
+    pre {
+      background-color: #222;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Signal Time Editor</h1>
+
+  <label for="token">GitHub Token:</label>
+  <input type="password" id="token" placeholder="ghp_...">
+
+  <label for="repo">Repository (username/repo):</label>
+  <input type="text" id="repo" placeholder="e.g. myuser/myrepo">
+
+  <label for="filepath">JSON File Path:</label>
+  <input type="text" id="filepath" placeholder="e.g. data/signals.json">
+
+  <label for="odd">Odd Value (e.g. 2×):</label>
+  <input type="text" id="odd">
+
+  <label for="newTime">Add New Time:</label>
+  <input type="time" id="newTime" step="1">
+  <button onclick="addTime()">Add Time</button>
+
+  <table id="timeTable">
+    <thead>
+      <tr><th>Time</th><th>Action</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <button onclick="loadJSON()">Load from GitHub</button>
+  <button onclick="saveToGitHub()">Save to GitHub</button>
+  <button onclick="downloadJSON()">Download JSON</button>
+
+  <pre id="preview">{}</pre>
+
+  <script>
+    let data = {};
+    let sha = "";
+
+    function renderTable() {
+      const times = data["2025-04-25"].times || [];
+      const tbody = document.querySelector("#timeTable tbody");
+      document.getElementById("odd").value = data["2025-04-25"].odd || "";
+      tbody.innerHTML = "";
+
+      times.forEach((time, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><input type="time" value="${time.slice(0,5)}" onchange="editTime(${i}, this.value)"></td>
+          <td><button class="delete-btn" onclick="deleteTime(${i})">Delete</button></td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.getElementById("preview").textContent = JSON.stringify(data, null, 2);
+    }
+
+    function addTime() {
+      const time = document.getElementById("newTime").value;
+      if (!time) return alert("Enter a time");
+      const fullTime = time + ":00";
+
+      if (!data["2025-04-25"]) data["2025-04-25"] = { odd: "2×", times: [] };
+
+      data["2025-04-25"].times.push(fullTime);
+      renderTable();
+    }
+
+    function editTime(i, value) {
+      data["2025-04-25"].times[i] = value + ":00";
+      renderTable();
+    }
+
+    function deleteTime(i) {
+      data["2025-04-25"].times.splice(i, 1);
+      renderTable();
+    }
+
+    async function loadJSON() {
+      const token = document.getElementById("token").value;
+      const repo = document.getElementById("repo").value;
+      const filepath = document.getElementById("filepath").value;
+
+      const res = await fetch(`https://api.github.com/repos/${repo}/contents/${filepath}`, {
+        headers: { Authorization: `token ${token}` }
+      });
+
+      if (!res.ok) return alert("Load failed");
+
+      const json = await res.json();
+      sha = json.sha;
+      data = JSON.parse(atob(json.content));
+      if (!data["2025-04-25"]) data["2025-04-25"] = { odd: "2×", times: [] };
+      renderTable();
+    }
+
+    async function saveToGitHub() {
+      const token = document.getElementById("token").value;
+      const repo = document.getElementById("repo").value;
+      const filepath = document.getElementById("filepath").value;
+
+      data["2025-04-25"].odd = document.getElementById("odd").value;
+
+      const content = btoa(JSON.stringify(data, null, 2));
+
+      const res = await fetch(`https://api.github.com/repos/${repo}/contents/${filepath}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `token ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: "Update signal times",
+          content: content,
+          sha: sha
+        })
+      });
+
+      if (res.ok) {
+        alert("Saved to GitHub!");
+      } else {
+        alert("Save failed!");
+      }
+    }
+
+    function downloadJSON() {
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "signals.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>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
